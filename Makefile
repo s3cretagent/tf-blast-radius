@@ -15,7 +15,7 @@ $(BIN)/tf-blast-radius:
 
 install: $(BIN)/tf-blast-radius ## create the venv and install in editable mode
 
-test: install ## run the suite — no Terraform binary, no cloud, no network
+test: install ## run the suite - no Terraform binary, no cloud, no network
 	$(BIN)/pytest --cov=tfblast --cov-report=term-missing
 
 lint: install ## ruff check + format check

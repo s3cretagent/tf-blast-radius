@@ -2,7 +2,7 @@
 
 Terraform tells you *what* it will change. It does not tell you what that change
 can reach. This module recovers the second half from the plan's ``configuration``
-block, which records the references every resource expression makes — the same
+block, which records the references every resource expression makes - the same
 edges Terraform itself uses to order the apply.
 
 Two things worth knowing about the format:
@@ -26,7 +26,7 @@ from typing import Any
 from .errors import PlanError
 
 #: Plan format versions this parser has been checked against. A newer one is a
-#: warning rather than a hard failure — the fields we read are stable — but an
+#: warning rather than a hard failure - the fields we read are stable - but an
 #: older major version means a different schema entirely.
 SUPPORTED_FORMAT_MAJOR = {"0", "1"}
 
@@ -46,8 +46,8 @@ class Action(StrEnum):
         """True when the existing object stops existing.
 
         This is the property that matters. A replace is not an update: the old
-        object is destroyed, and anything living inside it — rows, objects,
-        volumes — goes with it.
+        object is destroyed, and anything living inside it - rows, objects,
+        volumes - goes with it.
         """
         return self in (Action.DELETE, Action.REPLACE)
 
@@ -79,7 +79,7 @@ def normalise_reference(reference: str) -> str | None:
 
     ``aws_security_group.db.id`` and ``aws_security_group.db`` both become
     ``aws_security_group.db``. References to variables, locals, data sources and
-    ``each``/``count`` are dropped — they are not nodes we can reason about.
+    ``each``/``count`` are dropped - they are not nodes we can reason about.
     """
     text = reference.strip()
     if not text:
@@ -171,7 +171,7 @@ class Plan:
     def transitive_dependents(self, address: str) -> set[str]:
         """Everything that would be affected, directly or indirectly.
 
-        Iterative rather than recursive, and cycle-safe via the visited set —
+        Iterative rather than recursive, and cycle-safe via the visited set -
         Terraform rejects true cycles, but module-boundary approximation can
         introduce them, and a stack overflow is a poor way to report that.
         """
@@ -195,7 +195,7 @@ def _walk_module(
 
     References inside a module are module-local, so they are qualified with the
     current module path. Cross-module references travel through variables and
-    outputs, which the plan does not expose as resource-to-resource edges — those
+    outputs, which the plan does not expose as resource-to-resource edges - those
     are approximated by an edge to the module call itself.
     """
     for resource in module.get("resources", []) or []:

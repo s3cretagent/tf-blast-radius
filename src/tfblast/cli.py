@@ -2,9 +2,9 @@
 
 Exit codes:
 
-* ``0`` — allowed, or review-only when ``--fail-on`` is left at ``block``.
-* ``1`` — the gate tripped.
-* ``2`` — could not run (unreadable plan, malformed policy).
+* ``0`` - allowed, or review-only when ``--fail-on`` is left at ``block``.
+* ``1`` - the gate tripped.
+* ``2`` - could not run (unreadable plan, malformed policy).
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""tf-blast-radius — score a Terraform plan by how badly it can hurt.
+"""tf-blast-radius - score a Terraform plan by how badly it can hurt.
 
 `terraform plan` says "1 to destroy". It does not say whether that one is an
 unreferenced log group or the RDS instance forty resources hang off. This scores

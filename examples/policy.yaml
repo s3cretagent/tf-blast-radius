@@ -41,7 +41,7 @@ rules:
     match:
       category: serving
       action: delete
-    message: this carries live traffic — confirm the drain and cutover plan
+    message: this carries live traffic - confirm the drain and cutover plan
 
   - name: guardrail-removal
     action: review

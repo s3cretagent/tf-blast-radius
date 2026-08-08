@@ -17,7 +17,7 @@ htmlcov/
 .idea/
 .vscode/
 
-# real Terraform artifacts must never be committed — plan files contain
+# real Terraform artifacts must never be committed - plan files contain
 # resource attributes and sometimes secrets
 *.tfplan
 tfplan

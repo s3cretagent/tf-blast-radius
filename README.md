@@ -1,18 +1,19 @@
 # tf-blast-radius
 
-**Score a Terraform plan by how badly it can hurt — and gate the PR on it.**
+**Scores a Terraform plan by how much damage it can do, and gates the PR on it.**
 
-`terraform plan` ends with a line like this:
+Every `terraform plan` ends with a line like this:
 
 ```
 Plan: 1 to add, 3 to change, 1 to destroy.
 ```
 
-That line is the same whether the one destroyed resource is an unreferenced log
-group or the RDS instance forty resources hang off. Infracost tells you what a
-plan *costs*. `driftctl` tells you what has *drifted*. Nothing tells you the
-thing a reviewer actually needs to know at 5pm on a Friday: **how much of this
-can I break?**
+That line looks the same whether the destroyed resource is an unused log group or
+the RDS instance that forty other resources depend on.
+
+Infracost tells you what a plan will cost. driftctl tells you what has drifted.
+Neither tells you the thing a reviewer actually needs to know on a Friday
+afternoon: how much of this can I break?
 
 ```console
 $ tf-blast-radius score examples/plans/dangerous.json -w prod
@@ -23,48 +24,47 @@ BLAST RADIUS: 84/100  █████████████████░░�
 Target looks like production.
 7 resource(s) sit downstream of a destructive change.
 
-± aws_db_instance.orders  [78]  replace · stateful
-    · replaced in place — the existing object is destroyed (forced by change to engine_version)
-    · holds state that Terraform cannot recreate — data loss is not recoverable by re-running apply
-    · 3 direct and 7 transitive dependent(s) in this configuration
-    · targets what looks like a production workspace
-    ! policy [stateful-replace] → block: an in-place replacement destroys the existing object first.
+-/+ aws_db_instance.orders  [78]  replace | stateful
+    - replaced in place - the existing object is destroyed (forced by change to engine_version)
+    - holds state that Terraform cannot recreate - data loss is not recoverable by re-running apply
+    - 3 direct and 7 transitive dependent(s) in this configuration
+    - targets what looks like a production workspace
+    ! policy [stateful-replace] -> block: an in-place replacement destroys the existing object first.
       For databases and volumes this is a data-loss event wearing an update's clothing.
-    → cascade: aws_appautoscaling_target.checkout, aws_cloudwatch_metric_alarm.orders_errors,
-               aws_ecs_service.checkout, aws_ecs_service.orders_api (+3 more)
+    -> cascade: aws_appautoscaling_target.checkout, aws_cloudwatch_metric_alarm.orders_errors,
+                aws_ecs_service.checkout, aws_ecs_service.orders_api (+3 more)
 
-- aws_iam_policy.legacy_readonly  [54]  delete · guardrail
-    · is a security control — removing it breaks nothing today, which is what makes it
+- aws_iam_policy.legacy_readonly  [54]  delete | guardrail
+    - is a security control - removing it breaks nothing today, which is what makes it
       easy to approve by accident
-    ! policy [guardrail-removal] → review
+    ! policy [guardrail-removal] -> review
 
-- aws_cloudwatch_log_group.retired_worker  [35]  delete · stateless
-~ aws_ecs_service.checkout  [18]  update · stateless
-+ aws_s3_bucket.build_artifacts  [17]  create · stateful
+- aws_cloudwatch_log_group.retired_worker  [35]  delete | stateless
+~ aws_ecs_service.checkout  [18]  update | stateless
++ aws_s3_bucket.build_artifacts  [17]  create | stateful
 
-BLOCKED: blast radius 84/100 — blocked by 1 finding(s) under rule(s): stateful-replace (2 approvals required)
+BLOCKED: blast radius 84/100 - blocked by 1 finding(s) under rule(s): stateful-replace (2 approvals required)
 $ echo $?
 1
 ```
 
-That output is real — `make demo` prints it.
+That is real output. `make demo` prints it.
 
----
-
-## The line Terraform does not print
+## The thing Terraform does not tell you
 
 **`aws_db_instance.orders` is a replace, not an update.**
 
-In the plan JSON that change is `"actions": ["delete", "create"]`. There is no
-`"replace"` action — Terraform encodes it as a delete followed by a create, and
-a parser that reads the list naively sees a create and calls it harmless. The
-database is destroyed first; the create does not bring the rows back.
+In the plan JSON that change is written as `"actions": ["delete", "create"]`.
+There is no `"replace"` action. Terraform encodes it as a delete followed by a
+create, so a parser that reads the list naively sees a create and calls it
+harmless. The database is destroyed first, and the create does not bring the rows
+back.
 
-Seven other resources reference it. None of them appear in the plan's own
-destroy count, because they are not being destroyed — they are merely about to
-point at something that no longer exists.
+Seven other resources reference it. None of them show up in Terraform's own
+destroy count, because they are not being destroyed. They are just about to point
+at something that no longer exists.
 
-Both facts are recovered here, and both are asserted by tests:
+Both facts are recovered here, and both are covered by tests:
 
 ```python
 def test_a_replace_is_recognised_in_both_orderings() -> None:
@@ -72,41 +72,41 @@ def test_a_replace_is_recognised_in_both_orderings() -> None:
     assert parse_actions(["create", "delete"]) is Action.REPLACE   # create_before_destroy
 ```
 
----
+## How the score is built
 
-## How the score works
+Risk comes from three things multiplied together. Any one of them on its own is
+misleading.
 
-Risk is the product of three independent things, because any one alone misleads:
-
-**Severity** — what is happening to the object.
+**Severity**: what is happening to the object.
 
 | Action | Weight | |
 | --- | ---: | --- |
 | `delete` | 0.90 | the object stops existing |
-| `replace` | 0.85 | the object is destroyed, then a new one is made |
-| `update` | 0.25 | adjusted in place |
+| `replace` | 0.85 | the object is destroyed, then a new one is created |
+| `update` | 0.25 | changed in place |
 | `create` | 0.10 | nothing existing is at risk |
 
-**Recoverability** — whether destruction is reversible, by resource category.
+**Recoverability**: whether destroying it can be undone, based on the resource
+category.
 
-| Category | Multiplier | What is lost |
+| Category | Multiplier | What you lose |
 | --- | ---: | --- |
-| `stateful` | 1.00 | data no re-apply recreates — databases, buckets, volumes, KMS keys |
-| `serving` | 0.75 | live traffic — load balancers, NAT gateways, clusters |
-| `guardrail` | 0.70 | a security control — IAM, security groups, CloudTrail, WAF |
+| `stateful` | 1.00 | data no re-apply can recreate: databases, buckets, volumes, KMS keys |
+| `serving` | 0.75 | live traffic: load balancers, NAT gateways, clusters |
+| `guardrail` | 0.70 | a security control: IAM, security groups, CloudTrail, WAF |
 | `stateless` | 0.40 | nothing that cannot be rebuilt from code |
 
 Categories are matched as substrings against the Terraform type, so
 `aws_elasticache_cluster`, `google_redis_instance` and `azurerm_redis_cache` all
-land in `stateful` without maintaining three provider tables.
+land in `stateful` without maintaining three separate provider tables.
 
-**Reach** — how much else is wired into it, recovered from the plan's
-`configuration` block: the same reference edges Terraform uses to order the
-apply, walked in reverse.
+**Reach**: how much else is wired into it. This comes from the plan's
+`configuration` block, which holds the same reference edges Terraform uses to
+order an apply. We walk them backwards.
 
-Reach saturates. The step from 0 to 5 dependents matters far more than the step
-from 40 to 45, and a linear term would let one hub resource flatten every score
-in the plan. There is a test pinning that:
+Reach levels off on purpose. Going from 0 to 5 dependents matters far more than
+going from 40 to 45, and a linear term would let one hub resource flatten every
+score in the plan. There is a test pinning that behaviour:
 
 ```python
 def test_reach_saturates_so_one_hub_cannot_dominate_every_score() -> None:
@@ -116,24 +116,22 @@ def test_reach_saturates_so_one_hub_cannot_dominate_every_score() -> None:
     assert late == 0
 ```
 
-### The plan score is the worst change, not the sum
+### The plan score is the worst change, not the total
 
 Twenty tag updates must not add up to look like one destroyed database. A summed
-score stops meaning anything, and reviewers start ignoring it. The worst single
-finding sets the floor; breadth adds a bounded amount (max 10) on top.
-
----
+score stops meaning anything and reviewers start ignoring it. The worst single
+finding sets the floor, and breadth adds a bounded amount (10 at most) on top.
 
 ## Gating
 
 ```bash
 tf-blast-radius score tfplan.json                          # built-in policy
-tf-blast-radius score tfplan.json -p policy.yaml           # your rules
+tf-blast-radius score tfplan.json -p policy.yaml           # your own rules
 tf-blast-radius score tfplan.json --fail-on review         # stricter gate
 ```
 
-Rules are evaluated in order and **the first match wins**, so a narrow carve-out
-above a broad rule works without any exception machinery:
+Rules are checked in order and **the first match wins**, so a narrow exception can
+sit above a broad rule without any special exception handling:
 
 ```yaml
 version: 1
@@ -143,7 +141,7 @@ thresholds:
   required_approvals: 2
 
 rules:
-  # Carve-out first: sandbox databases are recreated nightly.
+  # Exception first: sandbox databases are recreated nightly.
   - name: sandbox-databases-are-disposable
     action: allow
     match:
@@ -165,13 +163,11 @@ rules:
       min_dependents: 8
 ```
 
-`match` fields are a conjunction — every one stated must hold. `address` and
-`type` accept globs. A policy where `review_above` exceeds `block_above` is
-rejected at load time, because nothing could ever land in the review band.
+Every field inside `match` has to hold for the rule to fire. `address` and `type`
+accept globs. A policy where `review_above` is higher than `block_above` is
+rejected when it loads, because nothing could ever land in the review band.
 
-**Exit codes:** `0` allowed · `1` gate tripped · `2` could not run.
-
----
+**Exit codes:** `0` allowed, `1` gate tripped, `2` could not run.
 
 ## Tracing the graph on its own
 
@@ -191,12 +187,10 @@ aws_db_instance.orders
   total blast radius: 7 resource(s)
 ```
 
-Useful on its own before you touch anything — "what breaks if I take this away?"
-is a question worth asking before writing the change, not after.
+This is useful before you write the change, not just after. "What breaks if I
+take this away?" is a good question to ask early.
 
----
-
-## In CI
+## Using it in CI
 
 ```yaml
 - run: terraform plan -out=tfplan
@@ -205,31 +199,30 @@ is a question worth asking before writing the change, not after.
 ```
 
 The workflow in this repo posts the markdown as a **single sticky PR comment**,
-updated in place rather than stacked on every push, and requests reviewers when
-the verdict is not `allow`.
+updated in place rather than stacked up on every push, and asks for reviewers
+when the verdict is not `allow`.
 
-> Generate the plan with `terraform show -json tfplan`, **not** `terraform plan -json`.
-> The latter is a stream of log events with no `configuration` block, so there is
-> no dependency graph to walk. The parser says so explicitly if you get it wrong.
-
----
+> Generate the plan with `terraform show -json tfplan`, **not**
+> `terraform plan -json`. The second one is a stream of log events with no
+> `configuration` block, so there is no dependency graph to read. The parser tells
+> you this if you get it wrong.
 
 ## What it does not do
 
-**Cross-module edges are approximated.** References inside a module are
-module-local and resolved exactly. References that travel between modules go
-through variables and outputs, which the plan does not expose as
-resource-to-resource edges — those become an edge to the module call. Reach is
-therefore a lower bound across module boundaries, never an overestimate.
+**Cross-module edges are approximate.** References inside a module are
+module-local and get resolved exactly. References that cross module boundaries
+travel through variables and outputs, which the plan does not expose as
+resource-to-resource edges, so those become an edge to the module call itself.
+Reach is therefore a lower bound across module boundaries. It under-reports
+rather than crying wolf.
 
-**Production detection is a hint.** Workspace and address names are pattern
-matched. It only ever *raises* a score — a misnamed production workspace must not
-read as safe. Use `--production` / `--no-production` when you know better.
+**Production detection is only a hint.** Workspace and address names are pattern
+matched. It can only ever *raise* a score, because a badly named production
+workspace must not read as safe. Use `--production` or `--no-production` when you
+know better.
 
 **It does not read state.** Everything comes from the plan file, so it needs no
-cloud credentials and can run on a fork PR where secrets are unavailable.
-
----
+cloud credentials and works on fork PRs where secrets are not available.
 
 ## Install
 
@@ -238,18 +231,16 @@ pip install -e '.[dev]'
 ```
 
 ```bash
-make test    # 128 tests — no Terraform binary, no cloud, no network
+make test    # 128 tests, no Terraform binary, no cloud, no network
 make check   # ruff + mypy --strict + tests
 make demo    # the run at the top of this README
-make explain # print the scoring model and built-in policy
+make explain # print the scoring model and the built-in policy
 ```
-
----
 
 ## Status
 
-128 tests · 97% coverage · `mypy --strict` clean.
+128 tests, 97% coverage, `mypy --strict` clean.
 
-Built by [Shubh Malhotra](https://github.com/s3cretagent) — DevOps / SRE.
+Built by [Shubh Malhotra](https://github.com/s3cretagent), DevOps / SRE.
 
 MIT licensed.

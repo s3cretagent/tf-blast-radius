@@ -1,6 +1,6 @@
 """Report rendering.
 
-The markdown renderer is the important one — it is what a reviewer sees on the
+The markdown renderer is the important one - it is what a reviewer sees on the
 pull request, and it leads with the verdict rather than the inventory. A wall of
 resource addresses is what `terraform plan` already gives you; the value added
 here is the sentence at the top telling you whether to worry.
@@ -27,8 +27,8 @@ _ACTION_ICON = {
     Action.CREATE: "+",
     Action.UPDATE: "~",
     Action.DELETE: "-",
-    Action.REPLACE: "±",
-    Action.READ: "<",
+    Action.REPLACE: "-/+",
+    Action.READ: "<=",
     Action.NOOP: " ",
 }
 _RESET = "\033[0m"
@@ -83,33 +83,33 @@ def render_text(verdict: Verdict, *, colour: bool | None = None) -> str:
         icon = _ACTION_ICON[finding.change.action]
         head = (
             f"{icon} {finding.address}  [{finding.score}]  "
-            f"{finding.change.action.value} · {finding.category}"
+            f"{finding.change.action.value} | {finding.category}"
         )
         if colour and finding.is_destructive:
             head = f"\033[31m{head}{_RESET}"
         lines.append(head)
         for reason in finding.reasons:
-            lines.append(f"    · {reason}")
+            lines.append(f"    - {reason}")
         rule = rules_by_address.get(finding.address)
         if rule is not None:
-            lines.append(f"    ! policy [{rule.name}] → {rule.outcome.value}: {rule.message}")
+            lines.append(f"    ! policy [{rule.name}] -> {rule.outcome.value}: {rule.message}")
         if finding.cascade and finding.is_destructive:
             shown = ", ".join(finding.cascade[:4])
             more = "" if len(finding.cascade) <= 4 else f" (+{len(finding.cascade) - 4} more)"
-            lines.append(f"    → cascade: {shown}{more}")
+            lines.append(f"    -> cascade: {shown}{more}")
         lines.append("")
 
     footer = f"{_OUTCOME_LABEL[verdict.outcome]}: {verdict.reason}"
     if verdict.required_approvals:
         footer += f" ({verdict.required_approvals} approvals required)"
     lines.append(f"{_ANSI[verdict.outcome]}{_BOLD}{footer}{_RESET}" if colour else footer)
-    return "\n".join(lines)
+    return "\n".join(line.rstrip() for line in lines)
 
 
 def render_markdown(verdict: Verdict) -> str:
     assessment = verdict.assessment
     lines = [
-        f"## {_OUTCOME_ICON[verdict.outcome]} Blast radius: {assessment.score}/100 — "
+        f"## {_OUTCOME_ICON[verdict.outcome]} Blast radius: {assessment.score}/100 - "
         f"{_OUTCOME_LABEL[verdict.outcome]}",
         "",
         f"`{_counts(verdict)}`",
@@ -126,7 +126,7 @@ def render_markdown(verdict: Verdict) -> str:
         for violation in blocking:
             lines.append(
                 f"- **`{violation.finding.address}`** "
-                f"({violation.finding.change.action.value}) — {violation.message}"
+                f"({violation.finding.change.action.value}) - {violation.message}"
             )
         lines.append("")
 
@@ -147,7 +147,7 @@ def render_markdown(verdict: Verdict) -> str:
     if detailed:
         lines.extend(["", "<details><summary>Why these scores</summary>", ""])
         for finding in detailed:
-            lines.append(f"**`{finding.address}`** — {finding.score}/100")
+            lines.append(f"**`{finding.address}`** - {finding.score}/100")
             lines.extend(f"- {reason}" for reason in finding.reasons)
             if finding.cascade and finding.is_destructive:
                 lines.append(f"- downstream: {', '.join(f'`{a}`' for a in finding.cascade[:8])}")
@@ -161,7 +161,7 @@ def render_markdown(verdict: Verdict) -> str:
             "[tf-blast-radius](https://github.com/s3cretagent/tf-blast-radius)</sub>",
         ]
     )
-    return "\n".join(lines)
+    return "\n".join(line.rstrip() for line in lines)
 
 
 def _finding_payload(finding: Finding) -> dict[str, object]:

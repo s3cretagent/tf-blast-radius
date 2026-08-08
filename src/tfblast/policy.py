@@ -1,6 +1,6 @@
 """Policy: turning a risk score into a decision.
 
-A number on its own changes nothing — somebody still merges the PR. Policy is
+A number on its own changes nothing - somebody still merges the PR. Policy is
 where the score acquires teeth: block the apply, or demand more eyes on it.
 
 Rules are evaluated in order and the first match wins, so a specific carve-out
@@ -43,7 +43,7 @@ class Outcome(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Rule:
-    """One policy rule. ``match`` is a conjunction — every stated field must hold."""
+    """One policy rule. ``match`` is a conjunction - every stated field must hold."""
 
     name: str
     outcome: Outcome
@@ -292,7 +292,7 @@ def evaluate(assessment: Assessment, policy: Policy | None = None) -> Verdict:
         elif finding_outcome is Outcome.REVIEW and outcome is not Outcome.BLOCK:
             outcome = Outcome.REVIEW
 
-    # The aggregate score can trip the gate even when no single change did — a
+    # The aggregate score can trip the gate even when no single change did - a
     # plan of many individually-tolerable destructive changes is still a bad day.
     aggregate = policy.thresholds.outcome_for(assessment.score)
     if aggregate is Outcome.BLOCK:
@@ -314,13 +314,13 @@ def _reason(
     outcome: Outcome, assessment: Assessment, violations: list[Violation], policy: Policy
 ) -> str:
     if outcome is Outcome.ALLOW:
-        return f"blast radius {assessment.score}/100 — within policy"
+        return f"blast radius {assessment.score}/100 - within policy"
 
     blocking = [v for v in violations if v.rule.outcome is Outcome.BLOCK]
     if blocking:
         names = ", ".join(sorted({v.rule.name for v in blocking}))
         return (
-            f"blast radius {assessment.score}/100 — blocked by {len(blocking)} finding(s) "
+            f"blast radius {assessment.score}/100 - blocked by {len(blocking)} finding(s) "
             f"under rule(s): {names}"
         )
     if outcome is Outcome.BLOCK:
@@ -329,6 +329,6 @@ def _reason(
             f"({policy.thresholds.block_above})"
         )
     return (
-        f"blast radius {assessment.score}/100 — requires "
+        f"blast radius {assessment.score}/100 - requires "
         f"{policy.thresholds.required_approvals} approvals"
     )

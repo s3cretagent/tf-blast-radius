@@ -7,9 +7,9 @@ reviewer actually needs at 5pm on a Friday: **how badly can this hurt?**
 Risk here is the product of three independent things, because any one of them
 alone is misleading:
 
-* **Severity** — is the object destroyed, or merely adjusted?
-* **Recoverability** — if it is destroyed, does the data come back?
-* **Reach** — how much else is wired into it?
+* **Severity** - is the object destroyed, or merely adjusted?
+* **Recoverability** - if it is destroyed, does the data come back?
+* **Reach** - how much else is wired into it?
 
 Deleting an unreferenced CloudWatch log group and deleting the RDS instance
 forty resources hang off are both "1 to destroy". Only one of them ends the
@@ -237,20 +237,20 @@ def score_change(change: ResourceChange, plan: Plan, *, production: bool = False
 
     if change.action is Action.REPLACE:
         detail = change.why_replaced
-        reasons.append(f"replaced in place — the existing object is destroyed ({detail})")
+        reasons.append(f"replaced in place - the existing object is destroyed ({detail})")
     elif change.action is Action.DELETE:
         reasons.append("destroyed")
 
     if change.action.destroys_data and category == "stateful":
         reasons.append(
-            "holds state that Terraform cannot recreate — data loss is not "
+            "holds state that Terraform cannot recreate - data loss is not "
             "recoverable by re-running apply"
         )
     elif change.action.destroys_data and category == "serving":
-        reasons.append("carries live traffic — expect an interruption during the apply")
+        reasons.append("carries live traffic - expect an interruption during the apply")
     elif change.action.destroys_data and category == "guardrail":
         reasons.append(
-            "is a security control — removing it breaks nothing today, which is "
+            "is a security control - removing it breaks nothing today, which is "
             "what makes it easy to approve by accident"
         )
 
