@@ -1,0 +1,235 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.orders",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": { "engine_version": "14.9", "instance_class": "db.r6g.xlarge", "identifier": "prod-orders" },
+        "after": { "engine_version": "15.4", "instance_class": "db.r6g.xlarge", "identifier": "prod-orders" },
+        "replace_paths": [["engine_version"]]
+      },
+      "action_reason": "replace_because_cannot_update"
+    },
+    {
+      "address": "aws_ecs_service.checkout",
+      "mode": "managed",
+      "type": "aws_ecs_service",
+      "name": "checkout",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": { "desired_count": 6, "task_definition": "checkout:41" },
+        "after": { "desired_count": 6, "task_definition": "checkout:42" }
+      }
+    },
+    {
+      "address": "aws_ecs_service.orders_api",
+      "mode": "managed",
+      "type": "aws_ecs_service",
+      "name": "orders_api",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": { "desired_count": 4 },
+        "after": { "desired_count": 6 }
+      }
+    },
+    {
+      "address": "aws_lambda_function.reconciler",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "reconciler",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": { "timeout": 60 },
+        "after": { "timeout": 120 }
+      }
+    },
+    {
+      "address": "aws_iam_policy.legacy_readonly",
+      "mode": "managed",
+      "type": "aws_iam_policy",
+      "name": "legacy_readonly",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["delete"],
+        "before": { "name": "legacy-readonly" },
+        "after": null
+      }
+    },
+    {
+      "address": "aws_cloudwatch_log_group.retired_worker",
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "retired_worker",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["delete"],
+        "before": { "name": "/aws/ecs/retired-worker" },
+        "after": null
+      }
+    },
+    {
+      "address": "aws_s3_bucket.build_artifacts",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "build_artifacts",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": { "bucket": "prod-build-artifacts" }
+      }
+    },
+    {
+      "address": "aws_security_group.db",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "db",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["no-op"],
+        "before": { "name": "prod-db" },
+        "after": { "name": "prod-db" }
+      }
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_db_instance.orders",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "orders",
+          "expressions": {
+            "vpc_security_group_ids": {
+              "references": ["aws_security_group.db.id", "aws_security_group.db"]
+            },
+            "db_subnet_group_name": {
+              "references": ["aws_db_subnet_group.main.name", "aws_db_subnet_group.main"]
+            },
+            "password": {
+              "references": [
+                "aws_secretsmanager_secret_version.db.secret_string",
+                "aws_secretsmanager_secret_version.db"
+              ]
+            }
+          }
+        },
+        {
+          "address": "aws_ecs_task_definition.checkout",
+          "mode": "managed",
+          "type": "aws_ecs_task_definition",
+          "name": "checkout",
+          "expressions": {
+            "container_definitions": {
+              "references": ["aws_db_instance.orders.address", "aws_db_instance.orders"]
+            }
+          }
+        },
+        {
+          "address": "aws_ecs_service.checkout",
+          "mode": "managed",
+          "type": "aws_ecs_service",
+          "name": "checkout",
+          "expressions": {
+            "task_definition": {
+              "references": ["aws_ecs_task_definition.checkout.arn", "aws_ecs_task_definition.checkout"]
+            },
+            "cluster": { "references": ["aws_ecs_cluster.main.id", "aws_ecs_cluster.main"] }
+          }
+        },
+        {
+          "address": "aws_ecs_service.orders_api",
+          "mode": "managed",
+          "type": "aws_ecs_service",
+          "name": "orders_api",
+          "expressions": {
+            "cluster": { "references": ["aws_ecs_cluster.main.id", "aws_ecs_cluster.main"] }
+          },
+          "depends_on": ["aws_db_instance.orders"]
+        },
+        {
+          "address": "aws_lambda_function.reconciler",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "reconciler",
+          "expressions": {
+            "environment": {
+              "references": ["aws_db_instance.orders.endpoint", "aws_db_instance.orders"]
+            }
+          }
+        },
+        {
+          "address": "aws_appautoscaling_target.checkout",
+          "mode": "managed",
+          "type": "aws_appautoscaling_target",
+          "name": "checkout",
+          "expressions": {
+            "resource_id": {
+              "references": ["aws_ecs_service.checkout.name", "aws_ecs_service.checkout"]
+            }
+          }
+        },
+        {
+          "address": "aws_cloudwatch_metric_alarm.orders_errors",
+          "mode": "managed",
+          "type": "aws_cloudwatch_metric_alarm",
+          "name": "orders_errors",
+          "expressions": {
+            "dimensions": {
+              "references": ["aws_ecs_service.orders_api.name", "aws_ecs_service.orders_api"]
+            }
+          }
+        },
+        {
+          "address": "aws_lambda_event_source_mapping.reconciler",
+          "mode": "managed",
+          "type": "aws_lambda_event_source_mapping",
+          "name": "reconciler",
+          "expressions": {
+            "function_name": {
+              "references": ["aws_lambda_function.reconciler.arn", "aws_lambda_function.reconciler"]
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.db",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "db",
+          "expressions": { "vpc_id": { "references": ["var.vpc_id"] } }
+        },
+        {
+          "address": "aws_iam_policy.legacy_readonly",
+          "mode": "managed",
+          "type": "aws_iam_policy",
+          "name": "legacy_readonly",
+          "expressions": {}
+        },
+        {
+          "address": "aws_cloudwatch_log_group.retired_worker",
+          "mode": "managed",
+          "type": "aws_cloudwatch_log_group",
+          "name": "retired_worker",
+          "expressions": {}
+        },
+        {
+          "address": "aws_s3_bucket.build_artifacts",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "build_artifacts",
+          "expressions": {}
+        }
+      ]
+    }
+  }
+}

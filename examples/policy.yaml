@@ -1,0 +1,59 @@
+# A stricter policy than the built-in default.
+#
+# Rules are evaluated in order and the FIRST match wins, so a narrow carve-out
+# placed above a broad rule works without any exception machinery.
+version: 1
+
+thresholds:
+  block_above: 70        # aggregate score above this blocks, even with no rule match
+  review_above: 35
+  required_approvals: 2
+
+rules:
+  # Carve-out first: scratch databases in the sandbox account are disposable.
+  - name: sandbox-databases-are-disposable
+    action: allow
+    match:
+      address: "module.sandbox.*"
+      category: stateful
+    message: sandbox resources are recreated nightly
+
+  - name: no-stateful-destroy
+    action: block
+    match:
+      category: stateful
+      action: delete
+    message: >-
+      destroying a stateful resource loses data no re-apply brings back.
+      Take a verified snapshot and link it on this PR before overriding.
+
+  - name: no-stateful-replace
+    action: block
+    match:
+      category: stateful
+      action: replace
+    message: >-
+      an in-place replacement destroys the existing object first. For databases
+      and volumes this is a data-loss event wearing an update's clothing.
+
+  - name: serving-tier-destroy
+    action: review
+    match:
+      category: serving
+      action: delete
+    message: this carries live traffic — confirm the drain and cutover plan
+
+  - name: guardrail-removal
+    action: review
+    match:
+      category: guardrail
+      action: delete
+    message: >-
+      removing a security control breaks nothing today, so nothing will alert.
+      Confirm it has been replaced, not simply dropped.
+
+  - name: wide-blast-radius
+    action: review
+    match:
+      min_dependents: 8
+    message: eight or more resources depend on this one

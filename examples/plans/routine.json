@@ -1,0 +1,88 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "aws_cloudwatch_log_group.checkout",
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "checkout",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": { "retention_in_days": 7, "tags": { "team": "checkout" } },
+        "after": { "retention_in_days": 30, "tags": { "team": "checkout", "cost-centre": "eng" } }
+      }
+    },
+    {
+      "address": "aws_cloudwatch_log_group.orders",
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": { "retention_in_days": 7 },
+        "after": { "retention_in_days": 30 }
+      }
+    },
+    {
+      "address": "aws_sns_topic.deploy_notifications",
+      "mode": "managed",
+      "type": "aws_sns_topic",
+      "name": "deploy_notifications",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": { "name": "deploy-notifications" }
+      }
+    },
+    {
+      "address": "aws_ecs_cluster.main",
+      "mode": "managed",
+      "type": "aws_ecs_cluster",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["no-op"],
+        "before": { "name": "staging" },
+        "after": { "name": "staging" }
+      }
+    }
+  ],
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_cloudwatch_log_group.checkout",
+          "mode": "managed",
+          "type": "aws_cloudwatch_log_group",
+          "name": "checkout",
+          "expressions": {}
+        },
+        {
+          "address": "aws_cloudwatch_log_group.orders",
+          "mode": "managed",
+          "type": "aws_cloudwatch_log_group",
+          "name": "orders",
+          "expressions": {}
+        },
+        {
+          "address": "aws_sns_topic.deploy_notifications",
+          "mode": "managed",
+          "type": "aws_sns_topic",
+          "name": "deploy_notifications",
+          "expressions": {}
+        },
+        {
+          "address": "aws_ecs_cluster.main",
+          "mode": "managed",
+          "type": "aws_ecs_cluster",
+          "name": "main",
+          "expressions": {}
+        }
+      ]
+    }
+  }
+}

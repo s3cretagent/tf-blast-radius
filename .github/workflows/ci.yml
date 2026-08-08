@@ -1,0 +1,159 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e '.[dev]'
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+      - run: mypy
+
+  test:
+    name: tests (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e '.[dev]'
+      - run: pytest --cov=tfblast --cov-report=term-missing --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.12'
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  real-terraform:
+    name: parse a plan from real terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.5"
+          terraform_wrapper: false
+
+      # The fixtures in examples/ are hand-written. This job proves the parser
+      # also handles JSON that real Terraform actually emits, so a format change
+      # upstream fails here rather than in someone's pipeline.
+      - name: generate a plan with the null provider
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tf && cd /tmp/tf
+          cat > main.tf <<'TF'
+          terraform {
+            required_providers {
+              null = { source = "hashicorp/null", version = "~> 3.2" }
+            }
+          }
+          resource "null_resource" "base" {
+            triggers = { version = "1" }
+          }
+          resource "null_resource" "dependent" {
+            triggers = { upstream = null_resource.base.id }
+          }
+          resource "null_resource" "leaf" {
+            triggers = { upstream = null_resource.dependent.id }
+          }
+          TF
+          terraform init -no-color
+          terraform plan -out=tfplan -no-color
+          terraform show -json tfplan > /tmp/tf/plan.json
+
+      - name: the parser must handle it and recover the graph
+        run: |
+          set -euo pipefail
+          tf-blast-radius score /tmp/tf/plan.json --fail-on never
+          tf-blast-radius graph /tmp/tf/plan.json null_resource.base | tee /tmp/graph.txt
+          grep -q "total blast radius: 2 resource(s)" /tmp/graph.txt
+
+  blast-radius-gate:
+    name: blast radius gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+
+      - name: score the demo plans
+        run: |
+          set -euo pipefail
+          tf-blast-radius score examples/plans/dangerous.json -w prod -p examples/policy.yaml \
+            -f markdown -o risk.md --fail-on never
+          tf-blast-radius score examples/plans/dangerous.json -w prod -p examples/policy.yaml \
+            -f json -o risk.json --fail-on never
+          # The routine plan must stay clean, or the model has drifted into noise.
+          tf-blast-radius score examples/plans/routine.json -w staging --fail-on review
+
+      - name: the dangerous plan must still be blocked
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open("risk.json"))
+          assert report["summary"]["outcome"] == "block", report["summary"]
+          db = next(f for f in report["findings"] if f["address"] == "aws_db_instance.orders")
+          assert db["action"] == "replace", db
+          assert db["category"] == "stateful", db
+          assert db["transitive_dependents"] == 7, db
+          print("gate holds:", report["summary"]["reason"])
+          PY
+
+      - name: comment the risk report on the pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('risk.md', 'utf8');
+            const marker = '## ';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.data.find(c => c.body && c.body.includes('Blast radius:'));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blast-radius
+          path: |
+            risk.md
+            risk.json

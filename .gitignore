@@ -1,0 +1,28 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+.DS_Store
+.idea/
+.vscode/
+
+# real Terraform artifacts must never be committed — plan files contain
+# resource attributes and sometimes secrets
+*.tfplan
+tfplan
+tfplan.json
+.terraform/
+*.tfstate
+*.tfstate.*
+/reports/
